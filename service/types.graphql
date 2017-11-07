@@ -1,0 +1,4 @@
+type Item @model {
+  id: ID! @isUnique
+  title: String!
+}
