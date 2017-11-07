@@ -1,18 +1,17 @@
-# API Gateway (Custom Schema)
+# API Gateway (Random Element)
 
 ## Overview
 
-This directory contains an example implementation for an **API gateway on top of a Graphcool CRUD API**. The idea is to customize the API operations that are exposed to your clients by _hiding_ the original CRUD API and defining a custom schema on top of it. 
+This example demonstrates how to use an **API gateway on top of a Graphcool CRUD API allowing to retrieve a random element**. The idea is to add a resolver `randomItem` that retrieves the item.
 
-The API gateway uses dedicated tooling that allows to easily implement a mapping from the custom schema to the underlying CRUD API.
 
 ## Get started
 
 ### 1. Download the example
 
 ```sh
-curl https://codeload.github.com/graphcool/graphcool/tar.gz/master | tar -xz --strip=2 graphcool-master/examples/node-gateway-custom-schema
-cd node-gateway-custom-schema
+git clone git@github.com:nikolasburk/graphcool-gateway-random-element.git
+cd graphcool-gateway-random-element
 ```
 
 ### 2. Install the Graphcool CLI
@@ -25,7 +24,7 @@ npm install -g graphcool
 
 ### 3. Deploy the Graphcool service
 
-The next step is to [deploy](https://docs-next.graph.cool/reference/graphcool-cli/commands-aiteerae6l#graphcool-deploy) the Graphcool service that's defined inside the [`service`](./service) directory:
+The next step is to [deploy](https://graph.cool/docs/reference/graphcool-cli/commands-aiteerae6l#graphcool-deploy) the Graphcool service that's defined inside the [`service`](./service) directory:
 
 ```sh
 cd service
@@ -36,9 +35,7 @@ When prompted which cluster you'd like to deploy, choose any of **Shared Cluster
 
 Then copy the endpoint for the `Simple API`, you'll need it in the next step.
 
-The service you just deployed provides a CRUD API for the `User` and `Post` model types that are defined in [`./service/types.graphql`](./service/types.graphql).
-
-The goal of the gateway server now is to create a _custom_ GraphQL API that only exposes variants (e.g. a subset or other more tailored operations) of the underlying CRUD API.
+The service you just deployed provides a CRUD API for the `Item` model type defined in [`./service/types.graphql`](./service/types.graphql).
 
 ### 4. Configure and start the API gateway server
 
@@ -46,7 +43,7 @@ The goal of the gateway server now is to create a _custom_ GraphQL API that only
 
 You first need to connect the gateway to the CRUD API. 
 
-Paste the the HTTP endpoint for the `Simple API` from the previous step into [`./gateway/index.js`](./gateway/index.js) as the value for `endpoint`, replacing the current placeholder `__SIMPLE_API_ENDPOINT__`:
+Paste the the HTTP endpoint for the `Simple API` from the previous step into [`./gateway/index.js`](./gateway/index.js#L37) as the value for `endpoint`, replacing the current placeholder `__SIMPLE_API_ENDPOINT__`:
 
 ```js
 const endpoint = '__SIMPLE_API_ENDPOINT__' // looks like: https://api.graph.cool/simple/v1/__SERVICE_ID__ where __SERVICE_ID__ is a placeholder consisting of 25 alphanumeric characters
@@ -84,25 +81,28 @@ cd ../server
 graphcool playground
 ```
 
-In the Playground, send the following mutation to create a new `User` node along with three `Post` nodes:
+In the Playground, send the following mutation to create five new `Item` nodes:
 
 ```graphql
 mutation {
-  createUser(
-    name: "John", 
-    alias: "john", 
-    posts: [
-      { title: "GraphQL is awesome" }, 
-      { title: "Declarative data fetching with GraphQL" },
-      { title: "GraphQL & Serverless" }
-    ]
-  ) {
+  a: createItem(title: "a") {
+    id
+  }
+  b: createItem(title: "b") {
+    id
+  }
+  c: createItem(title: "c") {
+    id
+  }
+  d: createItem(title: "d") {
+    id
+  }
+  e: createItem(title: "e") {
     id
   }
 }
 ```
 
-> **Note**: It's important the `alias` of the `User` is set to `john`. Otherwise the API gateway won't return any data since the alias in this example is [hardcoded](./gateway/index.js#L46).
 
 ### 2. Send queries to the API gateway
 
@@ -112,14 +112,9 @@ Send the following query to fetch the posts that you just created:
 
 ```graphql
 {
-  viewer {
-    me {
-      id
-      name
-      posts(limit: 2) {
-        title
-      }
-    }
+  randomItem {
+    id
+    title
   }
 }
 ```
@@ -130,70 +125,28 @@ Send the following query to fetch the posts that you just created:
 The API gateway is a thin layer on top of the Graphcool service's CRUD API. For this example, the CRUD API is based on the following data model defined in the service's [`types.graphql`](./service/types.graphql):
 
 ```graphql
-type User @model {
-  id: ID! @isUnique
-  name: String!
-  alias: String! @isUnique
-  posts: [Post!]! @relation(name: "UserPosts")
-}
-
-type Post @model {
+type Item @model {
   id: ID! @isUnique
   title: String!
-  author: User! @relation(name: "UserPosts")
 }
 ```
 
-Everyone who has access to the HTTP endpoint of the CRUD API can _see_ that it exposes the following operations:
-
-```graphql
-type Query {
-  # Read operations for `Post`
-  Post(id: ID): Post
-  allPosts(filter: PostFilter, orderBy: PostOrderBy, skip: Int, after: String, before: String, first: Int, last: Int): [Post!]!
-
-  # Read operations for `User`
-  User(alias: String, id: ID): User
-  allUsers(filter: UserFilter, orderBy: UserOrderBy, skip: Int, after: String, before: String, first: Int, last: Int): [User!]!
-}
-
-type Mutation {
-  # Create, update, delete operations for `Post`
-  createPost(title: String!, authorId: ID, author: PostauthorUser): Post
-  updatePost(id: ID!, title: String, authorId: ID, author: PostauthorUser): Post
-  deletePost(id: ID!): Post
-
-  # Create, update, delete operations for `User`
-  createUser(alias: String!, name: String!, postsIds: [ID!], posts: [UserpostsPost!]): User
-  updateUser(alias: String, id: ID!, name: String, postsIds: [ID!], posts: [UserpostsPost!]): User
-  deleteUser(id: ID!): User
-
-  # Set relation between `Post` and `User` node
-  addToUserPosts(postsPostId: ID!, authorUserId: ID!): AddToUserPostsPayload
-}
-```
-
-The API gateway now creates another API that will be exposed to the clients. The server that exposes this API is executing its queries against the underlying CRUD API. The magic enabling this functionality is implemented in the [`run`](./gateway/index.js#L13) function in [`index.js`](./gateway/index.js).
+The API gateway now creates another API that will be exposed to the clients. The server that exposes this API is executing its queries against the underlying CRUD API. The magic enabling this functionality is implemented in the [`run`](./gateway/index.js#L34) function in [`index.js`](./gateway/index.js).
 
 Here's the schema that defines the new API:
 
 ```graphql
 type Query {
-  viewer: Viewer!
-}
-
-type Viewer {
-  me: User
-  topPosts(limit: Int): [Post!]!
+  randomItem: Item
 }
 ```
 
 There are four major steps that are being performed to map the CRUD API to the new schema:
 
-1. Create local version of the CRUD API using [`makeRemoteExecutableSchema`](http://dev.apollodata.com/tools/graphql-tools/remote-schemas.html#makeRemoteExecutableSchema). [See the code](./gateway/index.js#L15).
-2. Define schema for the new API (the one exposed by the API gateway). [See the code](./gateway/index.js#L24).
-3. Merge remote schema with new schema using [`mergeSchemas`](http://dev.apollodata.com/tools/graphql-tools/schema-stitching.html#mergeSchemas). [See the code](./gateway/index.js#L36).
-4. Limit exposed operations from merged schemas (hiding all root fields except `viewer`) using [`transformSchema`](https://github.com/graphcool/graphql-transform-schema). [See the code](./gateway/index.js#L59).
+1. Create local version of the CRUD API using [`makeRemoteExecutableSchema`](http://dev.apollodata.com/tools/graphql-tools/remote-schemas.html#makeRemoteExecutableSchema). [See the code](./gateway/index.js#L40).
+2. Define schema for the new API (the one exposed by the API gateway). [See the code](./gateway/index.js#L45).
+3. Merge remote schema with new schema using [`mergeSchemas`](http://dev.apollodata.com/tools/graphql-tools/schema-stitching.html#mergeSchemas). [See the code](./gateway/index.js#L52).
+4. Limit exposed operations from merged schemas (hiding all root fields except `randomItem`) using [`transformSchema`](https://github.com/graphcool/graphql-transform-schema). [See the code](./gateway/index.js#71).
 
 
 

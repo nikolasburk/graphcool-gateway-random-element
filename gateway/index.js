@@ -8,7 +8,7 @@ const mergeSchemas = require('graphql-tools').mergeSchemas
 const introspectSchema = require('graphql-tools').introspectSchema
 const HttpLink = require('apollo-link-http').HttpLink
 const fetch = require('node-fetch')
-const playground  = require('graphql-playground/middleware').express
+const { expressPlayground } = require('graphql-playground-middleware')
 const request = require('graphql-request').request
 
 const allItemsQuery = `
@@ -34,7 +34,7 @@ query ($id: ID!) {
 function run() {
 
   // Step 1: Create local version of the CRUD API
-  const endpoint = 'https://api.graph.cool/simple/v1/cj9oi2m4d087a0118pabkfsxm'  // looks like: https://api.graph.cool/simple/v1/__SERVICE_ID__
+  const endpoint = '__SIMPLE_API_ENDPOINT__'  // looks like: https://api.graph.cool/simple/v1/cj9oi2m4d087a0118pabkfsxm
   const link = new HttpLink({ uri: endpoint, fetch })
   introspectSchema(link).then(introspectionSchema => {
     const graphcoolSchema = makeRemoteExecutableSchema({
@@ -57,20 +57,10 @@ function run() {
           randomItem: {
             resolve: () => {
               return request(endpoint, allItemsQuery).then(data => {
-                console.log(`received data: ${JSON.stringify(data)}`)
                 const { count } = data._allItemsMeta
                 const randomIndex = Math.floor((Math.random() * (count-1)) + 0)
-                console.log(`random index: ${randomIndex}`)
-                const itemId = data.allItems[randomIndex].id
-                console.log(`random id: ${itemId}`)
-                return request(endpoint, singleItemQuery, {
-                  id: itemId
-                }).then(data => {
-                  console.log(`received item: ${JSON.stringify(data)}`)
-                  const item = data.Item
-                  console.log(`return actual item: ${JSON.stringify(item)}`)
-                  return item
-                })
+                const { id } = data.allItems[randomIndex]
+                return request(endpoint, singleItemQuery, { id }).then(data => data.Item)
               })
             },
           }
@@ -87,10 +77,12 @@ function run() {
 
     const app = express()
 
-    app.use('/graphql', cors(), bodyParser.json(), graphqlExpress({ mergedSchemas }))
-    app.use('/playground', playground({ endpoint: '/graphql' }))
+    app.use('/graphql', cors(), bodyParser.json(), graphqlExpress({ schema }))
+    app.use('/playground', expressPlayground({ endpoint: '/graphql' }))
 
-    app.listen(3000, () => console.log('Server running. Open http://localhost:3000/playground to run queries.'))
+    const { PORT = 3000 } = process.env
+
+    app.listen(PORT, () => console.log(`Server running. Open http://localhost:${PORT}/playground to run queries.`))
   })
 
 }
